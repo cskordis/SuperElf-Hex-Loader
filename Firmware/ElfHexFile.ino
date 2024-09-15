@@ -71,7 +71,7 @@ int subdir = 0;
 #define DATABUS    A1       //Enable Data Bus
 #define btnUp      A2       //Menu Up button
 #define btnDown    A3       //Menu Down button
-#define btnPlay    A6       //Play Button
+#define btnLoad    A6       //Load Button
 #define btnStop    A7       //Stop Button
 
 #define D0         2        //Data Bus 0
@@ -89,14 +89,14 @@ int subdir = 0;
 byte scrollPos = 0;
 unsigned long scrollTime = millis() + scrollWait;
 
-int start = 0;                 //Currently playing flag
+int start = 0;                 //Currently loading flag
 int currentFile = 1;           //Current position in directory
 int maxFile = 0;               //Total number of files in directory
 int isDir = 0;                 //Is the current file a directory
 unsigned long timeDiff = 0;    //button debounce
 
 byte UP = 0;                   //Next File, down button pressed
-char PlayBytes[16];
+char LoadBytes[16];
 int pos = 0;
 
 File fileData;
@@ -123,7 +123,6 @@ void printString(const char* text, int line, int center = 0) {
   sendStr(text);
 }
 
-
 unsigned int hexToDec(String hexString) {
   unsigned int decValue = 0;
   int nextInt;
@@ -138,8 +137,16 @@ unsigned int hexToDec(String hexString) {
   return decValue;
 }
 
+String decToHex(long decValue, byte desiredStringLength) {
+  char myHex[10] = "";
+  ltoa(decValue,myHex,16); //convert to c string base 16
+  String hexString = String(myHex);
+  while (hexString.length() < desiredStringLength) hexString = "0" + hexString;
+  return hexString;
+}
+
 void readFile(char* file) {
-  if (SerialDebug) {
+  if (SerialDebug==1) {
     Serial.println(file);
   }
   if (file == NULL) {
@@ -147,6 +154,7 @@ void readFile(char* file) {
   }
   fileData = sd.open(file);
   bit = "";
+  
   if (fileData) {
     fileData.rewind();
     bits = "";
@@ -156,7 +164,6 @@ void readFile(char* file) {
         stopFile();
         return;
       }
-
       bit = fileData.read();
       if (bit == ' ') {
         continue;
@@ -168,17 +175,24 @@ void readFile(char* file) {
         bits = "";
         keyin();
       }
+      if (analogRead(btnLoad) <= 1) {
+        delay(50);
+        printString("Paused...", 0, 1);
+        while ((analogRead(btnLoad) > 1) ) {}
+        printString("Programming...", 0, 1);
+        continue;
+        
+      }
     }
     fileData.close();
   }
 }
 
 void keyin() {
-  if (SerialDebug) {
+  if (SerialDebug==1) {
     Serial.println(dataValue);
     Serial.println(hexValue);
   }
-  
   char buf[3];
   hexValue.toCharArray(buf, 3);
   printString(buf, 2, 1);
@@ -223,7 +237,7 @@ void keyin() {
   } else {
     digitalWrite(D7, LOW);
   }
-  delay(50);
+  delay(25);
   digitalWrite(InKey, HIGH);
   delay(25);
   digitalWrite(InKey, LOW);
@@ -231,17 +245,14 @@ void keyin() {
 }
 
 void setup() {
-  if (SerialDebug) {
+  if (SerialDebug==1) {
     Serial.begin(19200);
   }
   delay(1000);
   Wire.begin();
-  init_OLED();
-  delay(2500);               // Show logo for 2 seconds
-  reset_display();           // Clear logo and load saved mode
-
-  /*Set up pin mode*/
-  pinMode(btnPlay, INPUT);
+  
+   /*Set up pin mode*/
+  pinMode(btnLoad, INPUT);
   pinMode(btnStop, INPUT);
   pinMode(btnUp, INPUT_PULLUP);
   pinMode(btnDown, INPUT_PULLUP);
@@ -260,7 +271,12 @@ void setup() {
   /*Initialize pins*/
   digitalWrite(btnUp, HIGH);
   digitalWrite(btnDown, HIGH);
-  digitalWrite(DATABUS, HIGH);
+  digitalWrite(DATABUS, HIGH);  /*Disable Databus on transceiver*/
+  /*Initialize Display*/
+  init_OLED();
+  delay(2500);               /*Show logo for 2.5 seconds*/
+  reset_display();           /*Clear logo and load saved mode*/
+  
 
   /*Start SD card and check it's working*/
   if (!sd.begin(SD_CS, SPI_FULL_SPEED)) {
@@ -270,11 +286,13 @@ void setup() {
   /*set SD to root directory*/
   sd.chdir();
   int pos = 0;
-
   printString("Initializing...", 0, 1);
+  digitalWrite(DATABUS, LOW);   /*Enable Databus on transceiver*/
   delay(500);
-  getMaxFile();           /*get the total number of files in the directory*/
-  seekFile(currentFile);  /*move to the first file in the directory*/
+  digitalWrite(DATABUS, HIGH);  /*Disable Databus on transceiver*/
+  digitalWrite(InKey, LOW);     /*Turn off Inkey to allow manual entry if required*/
+  getMaxFile();                 /*Get the total number of files in the directory*/
+  seekFile(currentFile);        /*Move to the first file in the directory*/
 }
 
 void loop(void) {
@@ -290,21 +308,21 @@ void loop(void) {
     }
   }
   if (millis() - timeDiff > 50) { // check switch every 100ms
-    timeDiff = millis(); // get current millisecond count
-    if (analogRead(btnPlay) <= 1) {
+    timeDiff = millis();  /*Get current millisecond count*/
+    if (analogRead(btnLoad) <= 1) {
       if (start == 0) {
-        playFile();
+        loadFile();
         delay(50);
       } else {
         stopFile();
-        while (analogRead(btnPlay) <= 1) {
+        while (analogRead(btnLoad) <= 1) {
           //delay(50);
         }
       }
     }
   if (analogRead(btnStop) <= 1 && start == 1) {
       stopFile();
-      /*prevent button repeats by waiting until the button is released.*/
+      /*Prevent button repeats by waiting until the button is released.*/
       while (analogRead(btnStop) <= 1) {
         delay(50);
       }
@@ -330,7 +348,7 @@ void loop(void) {
       currentFile = 1;
       seekFile(currentFile);
       while (analogRead(btnStop) <= 1) {
-        delay(50); /*prevent button repeats by waiting until the button is released.*/
+        delay(50); /*Prevent button repeats by waiting until the button is released.*/
 
       }
     }
@@ -341,7 +359,7 @@ void loop(void) {
       upFile();
 
       while (digitalRead(btnUp) == LOW) {
-        delay(50); /*prevent button repeats by waiting until the button is released.*/
+        delay(50); /*Prevent button repeats by waiting until the button is released.*/
         upFile();
       }
     }
@@ -351,14 +369,14 @@ void loop(void) {
       scrollPos = 0;
       downFile();
       while (digitalRead(btnDown) == LOW) {
-        delay(50); /*prevent button repeats by waiting until the button is released.*/
+        delay(50); /*Prevent button repeats by waiting until the button is released.*/
         downFile();
       }
     }
   }
 }
 
-/*move up a file in the directory */
+/*Move up a file in the directory */
 void upFile() {
   currentFile--;
   if (currentFile < 1) {
@@ -369,7 +387,7 @@ void upFile() {
   seekFile(currentFile);
 }
 
-/*move down a file in the directory */
+/*Mve down a file in the directory */
 void downFile() {
   currentFile++;
   if (currentFile > maxFile) {
@@ -379,7 +397,7 @@ void downFile() {
   seekFile(currentFile);
 }
 
-/*move to a set position in the directory, store the filename, and display the name on screen.*/
+/*Move to a set position in the directory, store the filename, and display the name on screen.*/
 void seekFile(int pos) {
   if (UP == 1) {
     entry.cwd()->rewind();
@@ -403,28 +421,30 @@ void seekFile(int pos) {
   }
   entry.close();
 
-  PlayBytes[0] = '\0';
+  LoadBytes[0] = '\0';
   if (isDir == 1) {
-    strcat_P(PlayBytes, PSTR(VERSION));
+    strcat_P(LoadBytes, PSTR(VERSION));
   } else {
-    strcat_P(PlayBytes, PSTR("Select File"));
+    strcat_P(LoadBytes, PSTR("Select File"));
   }
-  printString(PlayBytes, 0, 1);
+  printString(LoadBytes, 0, 1);
 
   scrollPos = 0;
   scrollText(fileName);
 }
-/*stop playing file*/
+/*stop loading file*/
 void stopFile() {
   if (start == 1) {
-    printString("Done", 0, 1);
-    printString("", 2, 1);
+    printString("Completed", 0, 1);
     start = 0;
     digitalWrite(DATABUS, HIGH);
+    delay(1000);
+    printString("Ready", 0, 1);
+    printString("", 2, 1);
   }
 }
-/*play file*/
-void playFile() {
+/*load file*/
+void loadFile() {
   if (isDir == 1) {
     changeDir();
   } else {
@@ -443,7 +463,7 @@ void playFile() {
   }
 }
 
-/*gets the total files in the current directory and stores the number in maxFile*/
+/*Get the total files in the current directory and store the number in maxFile*/
 void getMaxFile() {
   entry.cwd()->rewind();
   maxFile = 0;
@@ -456,7 +476,7 @@ void getMaxFile() {
 }
 
 /*
-  change directory, if fileName="ROOT" then return to the root directory
+  Change directory, if fileName="ROOT" then return to the root directory
   SDFat has no easy way to move up a directory, so returning to root is the easiest way.
   each directory (except the root) must have a file called ROOT (no extension)
 */

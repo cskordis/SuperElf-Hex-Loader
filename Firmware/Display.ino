@@ -1,6 +1,5 @@
-#define ROTATE180   0        //if define rotate screen 180  
+#define ROTATE 0
 #define OLED_address   0x3C  //0x3C or 0x3D
-
 
 // 'Iconic_COSMAC_Elf_spaceship_scene', 64x32px
 const unsigned char logo [] PROGMEM = {
@@ -138,8 +137,6 @@ static void reset_display(void)
   clear_display();
   displayOn();
 }
-
-
 //==========================================================//
 // Turns display on.
 void displayOn(void)
@@ -203,21 +200,15 @@ static void init_OLED(void)
     sendcommand(0x14);
     sendcommand(0x20);             //MEMORYMODE
     sendcommand(0x02);             //com pin HW config, sequential com pin config (bit 4), disable left/right remap (bit 5), Feb 23, 2013: 128x32 OLED: 0x002,  128x32 OLED 0x012
-
-    #ifdef ROTATE180    
+#ifdef ROTATE
+      if (ROTATE==1) {
         sendcommand(0xA0 | 0x1);      //SEGREMAP   //Rotate screen 180 deg 0xA1
-        //sendcommand(0xA0);
-    
-       sendcommand(0xC8);            //COMSCANDEC  Rotate screen 180 Deg /* c0: scan dir normal, c8: reverse */
-       //sendcommand(0xC0);
-    #endif
-
-    #ifdef UNROTATE    
-        //sendcommand(0xA0 | 0x1);      //SEGREMAP   //Rotate screen 180 deg 0xA1
+        sendcommand(0xC8); 
+        }
+      else {
         sendcommand(0xA0);
-    
-        //sendcommand(0xC8);            //COMSCANDEC  Rotate screen 180 Deg /* c0: scan dir normal, c8: reverse */
         sendcommand(0xC0);
+      }
     #endif
 
     sendcommand(0xDA);          //0xDA
