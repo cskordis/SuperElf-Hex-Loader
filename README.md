@@ -6,5 +6,7 @@ The input pin from the arduino can be connected on the Super ELF pin 12/13 on U2
 
 ![SuperELF_Input](https://github.com/user-attachments/assets/295143ac-270e-44fe-8324-22a8617252cc)
 
+To use the protect memory a jumper from the 50 pin connector, P/NP (pin 36) needs to jupmer to the same on the on the Super Elf Hex Loader.
+
 
 
